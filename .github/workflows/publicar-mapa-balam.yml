@@ -1,0 +1,62 @@
+name: Publicar MAPA BALAM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "mapa-balam-pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar sitio público
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="MAPA_BALAM_GITHUB_PAGES_SOLO_PUBLICO.zip"
+          if [[ ! -f "$ZIP" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Sube $ZIP a main para publicar el atlas."
+            exit 0
+          fi
+          mkdir -p site
+          unzip -q "$ZIP" -d site
+          test -f site/index.html
+          test -f site/atlas/index.html
+          test -f site/data/atlas/municipios.json
+          test -f site/data/atlas/index.json
+          test -f site/data/atlas/localidades.json
+          if find site -type f \( -iname '*siesa*' -o -iname '*nominal*' -o -iname '*paciente*' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.csv' -o -iname '*auditoria*' \) | grep -q .; then
+            echo "::error::Paquete contiene archivos no destinados a publicación."
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "Cartografía pública verificada"
+      - name: Configurar GitHub Pages
+        if: steps.prepare.outputs.ready == 'true'
+        uses: actions/configure-pages@v5
+      - name: Empaquetar sitio
+        if: steps.prepare.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Publicar sitio
+        id: deployment
+        if: steps.prepare.outputs.ready == 'true'
+        uses: actions/deploy-pages@v4
